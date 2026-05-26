@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParkSmart – Akurdi Smart Parking</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <!-- Leaflet Routing Machine CSS (for turn-by-turn directions) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
+
+    <!-- QR Code Generator -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <!-- QR Code Scanner -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Routing Machine (uses OSRM — free, no key needed) -->
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body { background-color: #f5f7fa; color: #333; }
+
+        /* ── HEADER ── */
+        header {
+            background-color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #3b82f6;
+            text-decoration: none;
+        }
+        .logo-icon {
+            width: 30px; height: 30px;
+            background-color: #3b82f6;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: bold;
+        }
+        .nav-links { display: flex; gap: 2rem; }
+        .nav-links a {
+            text-decoration: none; color: #64748b;
+            font-weight: 500; font-size: 1rem;
+        }
+        .nav-links a.active, .nav-links a:hover { color: #3b82f6; }
+        .auth-buttons { display: flex; gap: 1rem; align-items: center; }
+
+        /* ── BUTTONS ── */
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 1rem;
+            transition: all .15s;
+        }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-outline {
+            background: transparent; color: #64748b;
+            border: 1px solid #e2e8f0;
+        }
+        .btn-outline:hover { border-color: #3b82f6; color: #3b82f6; }
+        .btn-primary { background-color: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-scanner { background: linear-gradient(135deg, #6366f1, #3b82f6); color: white; }
+
+        /* ── BANNERS ── */
+        .location-banner {
+            background-color: #f0fdf4;
+            border-bottom: 1px solid #dcfce7;
+            padding: 0.5rem 0;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #166534;
+        }
+        .fare-bar {
+            background: linear-gradient(90deg, #0f172a, #1e3a5f);
+            color: white;
+            padding: 0.5rem 2rem;
+            text-align: center;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .fare-bar b { color: #93c5fd; font-size: 1rem; }
+
+        /* ── NOTIFICATION BAR ── */
+        .notif-bar {
+            position: fixed; top: 70px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999; display: none;
+            width: 90%; max-width: 420px;
+        }
+        .notif-inner {
+            background: #0f172a; color: white;
+            border-radius: 10px; padding: 1rem 1.25rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,.3);
+            display: flex; gap: 0.75rem; align-items: center;
+            animation: slideDown .3s ease;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to   { transform: translateY(0); opacity: 1; }
+        }
+        .notif-icon { font-size: 1.5rem; }
+        .notif-text h4 { font-size: 0.95rem; margin-bottom: 0.2rem; }
+        .notif-text p  { font-size: 0.85rem; color: #94a3b8; }
+        .notif-close { margin-left: auto; background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2rem; }
+
+        /* ── SEARCH ── */
+        .search-section {
+            background-color: white;
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .search-container {
+            max-width: 1200px; margin: 0 auto;
+            display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
+        }
+        .search-input { flex: 1; min-width: 300px; position: relative; }
+        .search-input input {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            border: 1px solid #e2e8f0; border-radius: 6px; font-size: 1rem;
+        }
+        .search-input input:focus { outline: none; border-color: #3b82f6; }
+        .search-icon {
+            position: absolute; left: 1rem; top: 50%;
+            transform: translateY(-50%); color: #64748b;
+        }
+        .date-time-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .date-time-filters input {
+            padding: 0.75rem; border: 1px solid #e2e8f0;
+            border-radius: 6px; font-size: 0.9rem;
+        }
+        .date-time-filters input:focus { outline: none; border-color: #3b82f6; }
+        .buffer-controls {
+            display: flex; align-items: center; gap: 0.5rem;
+            background-color: #fffbeb; padding: 0.5rem 1rem;
+            border-radius: 6px; color: #92400e; font-size: 0.9rem;
+        }
+        .buffer-btn { background: none; border: none; cursor: pointer; color: #92400e; font-size: 1rem; font-weight: 700; }
+
+        /* ── MAIN LAYOUT ── */
+        .main-content {
+            max-width: 1200px; margin: 2rem auto;
+            display: flex; gap: 2rem; padding: 0 1rem;
+        }
+
+        /* ── SIDEBAR ── */
+        .filters-sidebar {
+            width: 280px; flex-shrink: 0;
+            background-color: white; border-radius: 10px;
+            padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.1);
+            height: fit-content;
+        }
+        .filters-header {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 1.5rem;
+        }
+        .filter-group { margin-bottom: 1.5rem; }
+        .filter-group h3 { font-size: 0.9rem; margin-bottom: 0.75rem; color: #334155; }
+        .filter-select {
+            width: 100%; padding: 0.5rem;
+            border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.9rem;
+        }
+        .price-range { width: 100%; margin: 0.5rem 0; accent-color: #3b82f6; }
+        .price-display { text-align: center; font-size: 0.9rem; color: #334155; }
+        .filter-options { display: flex; flex-direction: column; gap: 0.5rem; }
+        .filter-option { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; cursor: pointer; }
+        .sensor-legend { font-size: 0.85rem; line-height: 2; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            font-size: 0.75rem; padding: 0.2rem 0.5rem;
+            border-radius: 10px; font-weight: 600;
+        }
+        
+        /* ── RESULTS SECTION ── */
+        .results-section { flex: 1; }
+        .results-header {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 1.5rem;
+        }
+        .results-header h2 { font-size: 1.2rem; }
+        .results-header p  { font-size: 0.9rem; color: #64748b; margin-top: 0.2rem; }
+        .view-toggle {
+            display: flex; background-color: #f1f5f9;
+            border-radius: 6px; padding: 0.25rem;
+        }
+        .view-btn {
+            padding: 0.5rem 1rem; border: none; background: none;
+            cursor: pointer; font-size: 0.9rem; border-radius: 4px;
+        }
+        .view-btn.active { background-color: white; box-shadow: 0 1px 2px rgba(0,0,0,.1); color: #3b82f6; }
+
+        /* ── PARKING CARD ── */
+        .parking-card {
+            background-color: white; border-radius: 10px;
+            padding: 1.5rem; margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,.1);
+            display: flex; gap: 1.5rem;
+            border: 1px solid transparent; transition: border .2s;
+        }
+        .parking-card:hover { border-color: #3b82f6; }
+        .parking-image { width: 200px; height: 150px; border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+        .parking-image img { width: 100%; height: 100%; object-fit: cover; }
+        .parking-details { flex: 1; }
+        .parking-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; align-items: flex-start; }
+        .parking-title { font-size: 1.2rem; font-weight: 600; }
+        .parking-status { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+        .status-available { background-color: #ecfdf5; color: #065f46; }
+        .status-warning   { background-color: #fffbeb; color: #92400e; }
+        .status-full      { background-color: #fee2e2; color: #991b1b; }
+        .parking-location { font-size: 0.9rem; color: #64748b; margin-bottom: 1rem; }
+        .parking-features { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .feature { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; color: #64748b; }
+        .parking-footer { display: flex; justify-content: space-between; align-items: center; }
+        .parking-hours { font-size: 0.9rem; color: #64748b; }
+        .parking-actions { display: flex; gap: 0.75rem; }
+
+        /* ── MAP VIEW ── */
+        #map-view { display: none; }
+        #leaflet-map {
+            height: 460px; border-radius: 10px;
+            overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.1);
+        }
+
+        /* Leaflet routing panel style override */
+        .leaflet-routing-container {
+            background: white; border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.1);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 0.85rem; max-height: 200px; overflow-y: auto;
+        }
+        .leaflet-routing-alt { display: none; }
+
+        .dir-panel {
+            background: white; border-radius: 10px;
+            padding: 1.25rem; margin-top: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,.08);
+        }
+        .dir-panel h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+        #dir-summary { font-size: 0.9rem; color: #64748b; margin-bottom: 0.75rem; }
+        .dir-step {
+            display: flex; gap: 0.5rem; align-items: flex-start;
+            padding: 0.35rem 0; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem;
+        }
+        .dir-step:last-child { border-bottom: none; }
+        .dir-num {
+            min-width: 20px; height: 20px; background: #3b82f6; color: white;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: 700; margin-top: 2px; flex-shrink: 0;
+        }
+
+        /* Scan map inside scanner modal */
+        #scan-leaflet-map { height: 220px; border-radius: 10px; margin-top: 1rem; }
+
+        /* ── MODALS ── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: none; justify-content: center; align-items: center;
+            z-index: 2000; padding: 1rem;
+        }
+        .modal-content {
+            background-color: white; border-radius: 10px;
+            padding: 2rem; width: 100%; max-width: 600px;
+            max-height: 90vh; overflow-y: auto;
+        }
+        .modal-header { margin-bottom: 1.5rem; text-align: center; }
+        .modal-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .modal-subtitle { font-size: 0.9rem; color: #64748b; }
+        .modal-body { margin-bottom: 1.5rem; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 1rem; }
+
+        /* ── SLOT GRID ── */
+        .slot-container {
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 1rem; margin: 1.5rem 0;
+        }
+        .slot { padding: 1rem; border-radius: 12px; text-align: center; transition: all .2s; }
+        .slot.free     { background-color: #22c55e; color: white; }
+        .slot.occupied { background-color: #ef4444; color: white; opacity: .85; }
+        .slot-title    { font-weight: 700; font-size: 1rem; }
+        .slot-status   { opacity: 0.9; margin: 2px 0 4px; font-size: 0.85rem; }
+        .slot-sensors  { font-size: 0.75rem; opacity: 0.85; margin-bottom: 6px; }
+        .slot-btn {
+            padding: 8px 12px; border: 0; border-radius: 8px;
+            background: #1d4ed8; color: white; cursor: pointer;
+            width: 100%; font-size: 0.85rem;
+        }
+        .slot-btn:disabled { background: #6b7280; cursor: not-allowed; }
+
+        /* ── FARE ROWS ── */
+        .fare-row { display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.4rem 0; }
+        .fare-row.total {
+            border-top: 2px solid #e2e8f0; padding-top: 0.75rem;
+            margin-top: 0.4rem; font-weight: 700; font-size: 1.05rem;
+        }
+        .fare-row.total span:last-child { color: #3b82f6; font-size: 1.2rem; }
+        .info-box { background: #f8fafc; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; }
+
+        /* ── PAYMENT ── */
+        .payment-method {
+            display: flex; align-items: center; padding: 1rem;
+            border: 1px solid #e2e8f0; border-radius: 8px;
+            margin-bottom: 0.75rem; cursor: pointer; gap: 0.75rem; transition: all .15s;
+        }
+        .payment-method:hover  { border-color: #3b82f6; }
+        .payment-method.active { border-color: #3b82f6; background-color: #f0f7ff; }
+        .payment-method input  { accent-color: #3b82f6; }
+        .upi-container { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-top: 1rem; text-align: center; }
+        .upi-id { font-weight: bold; background: #f8f9fa; border-radius: 6px; padding: 0.75rem; margin: 0.75rem 0; font-size: 1rem; }
+
+        /* ── QR TICKET ── */
+        .ticket-card { border: 2px dashed #3b82f6; border-radius: 16px; padding: 1.5rem; background: linear-gradient(135deg,#f0f7ff,white); }
+        .t-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+        .t-brand { font-size: 1.2rem; font-weight: 800; color: #3b82f6; }
+        .t-id-lbl { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing:.04em; }
+        .t-id-val { font-size: 0.9rem; font-weight: 700; text-align: right; }
+        #qr-canvas-ticket { display: flex; justify-content: center; margin: 0.75rem 0; }
+        .t-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
+        .t-field label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing:.04em; display: block; }
+        .t-field span  { font-size: 1rem; font-weight: 700; color: #1e293b; }
+        .t-div { border: none; border-top: 2px dashed #cbd5e1; margin: 1rem 0; }
+        .t-total { display: flex; justify-content: space-between; align-items: center; }
+        .t-amount { font-size: 1.6rem; font-weight: 800; color: #10b981; }
+        .t-valid { display: inline-block; background:#dcfce7; color:#065f46; font-size:0.75rem; font-weight:700; padding:0.2rem 0.5rem; border-radius:10px; margin-top:0.3rem; }
+
+        /* ── SCANNER ── */
+        .drop-zone {
+            border: 2px dashed #cbd5e1; border-radius: 12px;
+            padding: 2.5rem 1rem; cursor: pointer;
+            background: #f8fafc; text-align: center;
+            transition: all .2s; margin-bottom: 1rem;
+        }
+        .drop-zone:hover, .drop-zone.over { border-color: #3b82f6; background: #eff6ff; }
+        .scan-success { background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:1rem; }
+        .scan-error   { background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:1rem; }
+        .scan-warn    { background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:1rem; }
+        .gate-anim    { font-size:3rem; text-align:center; animation: pulse 1s ease 3; }
+        @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
+
+        /* ── AUTH FORMS ── */
+        .form-field { margin-bottom: 1rem; }
+        .form-field label { display: block; font-size: 0.9rem; font-weight: 500; margin-bottom: 0.5rem; }
+        .form-field input { width:100%; padding:0.75rem; border:1px solid #e2e8f0; border-radius:6px; font-size:1rem; }
+        .form-field input:focus { outline:none; border-color:#3b82f6; }
+
+        /* ── FOOTER ── */
+        footer { background-color:#1e293b; color:#e2e8f0; padding:3rem 2rem; margin-top:3rem; }
+        .footer-container { max-width:1200px; margin:0 auto; display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:2rem; }
+        .footer-logo { display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; color:white; font-weight:bold; font-size:1.1rem; }
+        .footer-logo-icon { width:30px; height:30px; background:#3b82f6; border-radius:6px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; }
+        .footer-desc { font-size:0.9rem; line-height:1.6; color:#94a3b8; }
+        .footer-col h4 { font-size:1rem; font-weight:600; margin-bottom:1rem; color:white; }
+        .footer-col a { display:block; color:#94a3b8; text-decoration:none; font-size:0.9rem; margin-bottom:0.5rem; }
+        .footer-col a:hover { color:white; }
+        .footer-bottom { max-width:1200px; margin:2rem auto 0; border-top:1px solid #334155; padding-top:2rem; text-align:center; font-size:0.9rem; color:#94a3b8; }
+
+        /* ── RESPONSIVE ── */
+        @media(max-width:768px){
+            .navbar { padding:1rem; }
+            .nav-links { display:none; }
+            .main-content { flex-direction:column; }
+            .filters-sidebar { width:100%; }
+            .parking-card { flex-direction:column; }
+            .parking-image { width:100%; height:200px; }
+            .slot-container { grid-template-columns:repeat(2,1fr); }
+        }
+        @media(max-width:480px){
+            .slot-container { grid-template-columns:1fr; }
+            .btn-scanner { display:none; }
+            .t-grid { grid-template-columns:1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- NOTIFICATION BAR -->
+<div class="notif-bar" id="notif-bar">
+    <div class="notif-inner" id="notif-inner">
+        <div class="notif-icon" id="notif-icon">⏰</div>
+        <div class="notif-text">
+            <h4 id="notif-title">Parking Expiring</h4>
+            <p id="notif-msg">Your slot expires soon</p>
+        </div>
+        <button class="notif-close" onclick="closeNotif()">✕</button>
+    </div>
+</div>
+
+<!-- HEADER -->
+<header>
+    <nav class="navbar">
+        <a href="#" class="logo">
+            <div class="logo-icon">P</div>
+            <span>ParkSmart</span>
+        </a>
+        <div class="nav-links">
+            <a href="#" class="active">Home</a>
+            <a href="#" onclick="switchView('list');return false;">Find Parking</a>
+            <a href="#" onclick="showModal('login-modal');return false;">My Bookings</a>
+        </div>
+        <div class="auth-buttons">
+            <button class="btn btn-scanner" id="open-scanner-btn">📷 Gate Scanner</button>
+            <button class="btn btn-outline" id="login-btn">Login</button>
+            <button class="btn btn-primary" id="signup-btn">Sign Up</button>
+        </div>
+    </nav>
+</header>
+
+<div class="location-banner">
+    📍 PCCOE College Parking, Akurdi, Pune &nbsp;·&nbsp;
+    Updates every 10 seconds
+</div>
+
+<!-- FARE PREVIEW BAR -->
+<div class="fare-bar" id="fare-bar">
+    ⏱ Duration: <b id="fb-duration">–</b> &nbsp;|&nbsp;
+    ₹80/hr base &nbsp;|&nbsp;
+    Estimated: <b id="fb-total">₹–</b> (incl. service fee)
+</div>
+
+<!-- SEARCH -->
+<section class="search-section">
+    <div class="search-container">
+        <div class="search-input">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-loc" value="PCCOE College, Akurdi, Pune" placeholder="Search location…">
+        </div>
+        <div class="date-time-filters">
+            <input type="date" id="bk-date" value="2025-08-07">
+            <input type="time" id="bk-start" value="09:00">
+            <input type="time" id="bk-end"   value="11:00">
+        </div>
+        <div class="buffer-controls">
+            <button class="buffer-btn" id="buf-minus">−</button>
+            <span id="buf-lbl">±15min</span>
+            <button class="buffer-btn" id="buf-plus">+</button>
+        </div>
+        <button class="btn btn-primary" id="search-btn">Search</button>
+    </div>
+</section>
+
+<!-- MAIN CONTENT -->
+<div class="main-content">
+
+    <!-- SIDEBAR -->
+    <aside class="filters-sidebar">
+        <div class="filters-header">
+            <h2>Filters</h2>
+            <button class="btn btn-outline" style="padding:0.3rem 0.7rem;font-size:0.85rem;" onclick="clearFilters()">Clear All</button>
+        </div>
+        <div class="filter-group">
+            <h3>Sort by</h3>
+            <select class="filter-select" id="sort-select">
+                <option>Distance</option>
+                <option>Price (Low to High)</option>
+                <option>Availability</option>
+                <option>Rating</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <h3>Price Range (INR)</h3>
+            <input type="range" min="50" max="500" value="200" class="price-range" id="price-range">
+            <div class="price-display">Up to ₹<span id="price-lbl">200</span>/hour</div>
+        </div>
+        <div class="filter-group">
+            <h3>Distance from Center</h3>
+            <div class="filter-options">
+                <label class="filter-option"><input type="radio" name="dist" value="0.5"> Within 0.5 km</label>
+                <label class="filter-option"><input type="radio" name="dist" value="1" checked> Within 1 km</label>
+                <label class="filter-option"><input type="radio" name="dist" value="2"> Within 2 km</label>
+                <label class="filter-option"><input type="radio" name="dist" value="5"> Within 5 km</label>
+            </div>
+        </div>
+        <div class="filter-group">
+            <h3>Facility Type</h3>
+            <div class="filter-options">
+                <label class="filter-option"><input type="checkbox" checked> Street Parking</label>
+                <label class="filter-option"><input type="checkbox" checked> Private Lots</label>
+                <label class="filter-option"><input type="checkbox"> Shopping Centers</label>
+                <label class="filter-option"><input type="checkbox"> Commercial Buildings</label>
+            </div>
+        </div>
+        <div class="filter-group">
+            <h3>Amenities</h3>
+            <div class="filter-options">
+                <label class="filter-option"><input type="checkbox"> Covered Parking</label>
+                <label class="filter-option"><input type="checkbox"> Security Guard</label>
+                <label class="filter-option"><input type="checkbox"> CCTV</label>
+                <label class="filter-option"><input type="checkbox"> 24/7 Access</label>
+            </div>
+        </div>
+        <div class="filter-group">
+           
+            <p style="font-size:0.8rem;color:#64748b;margin-top:0.5rem;line-height:1.5;">
+                Slot = <b>Occupied</b> 
+            </p>
+        </div>
+    </aside>
+
+    <!-- RESULTS -->
+    <main class="results-section">
+        <div class="results-header">
+            <div>
+                <h2>Parking in Akurdi, Pune</h2>
+                <p id="avail-summary">Loading real-time slot data…</p>
+            </div>
+            <div class="view-toggle">
+                <button class="view-btn active" id="list-btn">List</button>
+                <button class="view-btn" id="map-btn">Map</button>
+            </div>
+        </div>
+
+        <!-- LIST VIEW -->
+        <div id="list-view">
+            <div class="parking-card">
+                <div class="parking-image">
+                    <img src="img.jfif" alt="PCCOE Parking">
+                </div>
+                <div class="parking-details">
+                    <div class="parking-header">
+                        <h3 class="parking-title">PCCOE College Parking</h3>
+                        <span class="parking-status status-available" id="card-badge">Available</span>
+                    </div>
+                    <p class="parking-location">📍 Sector 26, PCMC Rd, Akurdi · 0.2 km from center</p>
+                    <div class="parking-features">
+                        <div class="feature">📅 <span id="slots-summary">Loading…</span></div>
+                        <div class="feature">💰 <span>₹30
+                            / hour</span></div>
+                        <div class="feature">🛡 <span>Covered · Security Guard</span></div>
+                        
+                    </div>
+                    <div class="parking-footer">
+                        <p class="parking-hours">Open 24/7 · Updated <span id="last-upd">–</span></p>
+                        <div class="parking-actions">
+                            <button class="btn btn-outline" id="get-directions-btn">🗺 Get Directions</button>
+                            <button class="btn btn-primary" id="book-btn">Book Now</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAP VIEW — Leaflet -->
+        <div id="map-view">
+            <div id="leaflet-map"></div>
+            <div class="dir-panel" id="dir-panel" style="display:none;">
+                <h3>🧭 Directions to PCCOE Parking</h3>
+                <div id="dir-summary"></div>
+                <div id="dir-steps"></div>
+                <button class="btn btn-primary" style="margin-top:1rem;width:100%;" onclick="openOSMExternal()">
+                    Open in Google Maps ↗
+                </button>
+            </div>
+        </div>
+
+        <div style="text-align:center;margin-top:2rem;">
+            <button class="btn btn-outline" onclick="alert('No more results in this area.')">Load More Parking</button>
+        </div>
+    </main>
+</div>
+
+<!-- ══════════ MODAL 1 — SLOT SELECTION ══════════ -->
+<div class="modal-overlay" id="slot-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div style="font-size:2.5rem;">🚗</div>
+            <h2 class="modal-title">Select Your Slot</h2>
+            <p class="modal-subtitle">Live status · 🟢 Free &nbsp; 🔴 Occupied</p>
+        </div>
+        <div class="modal-body">
+            <div id="slot-fare-preview" style="background:#eff6ff;border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:0.9rem;display:none;">
+                ⏱ Duration: <strong id="sm-dur">–</strong> &nbsp;·&nbsp;
+                Rate: ₹30/hr &nbsp;·&nbsp;
+                Estimated: <strong id="sm-total" style="color:#3b82f6;">₹–</strong>
+            </div>
+            <div class="slot-container" id="slot-container">
+                <p style="grid-column:1/-1;text-align:center;color:#64748b;">Loading live data…</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" id="slot-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ MODAL 2 — PAYMENT ══════════ -->
+<div class="modal-overlay" id="pay-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div style="font-size:2rem;">💳</div>
+            <h2 class="modal-title">Booking Summary & Payment</h2>
+        </div>
+        <div class="modal-body">
+            <div class="info-box">
+                <div class="fare-row"><span>Location</span><span id="p-loc">–</span></div>
+                <div class="fare-row"><span>Slot</span><span id="p-slot">–</span></div>
+                <div class="fare-row"><span>Date</span><span id="p-date">–</span></div>
+                <div class="fare-row"><span>Time</span><span id="p-time">–</span></div>
+            </div>
+            <div style="margin-bottom:1.25rem;">
+                <h3 style="font-size:1rem;font-weight:600;margin-bottom:0.75rem;">Payment Method</h3>
+                <div class="payment-method active" onclick="pickPayment('upi',this)">
+                    <input type="radio" name="pm" checked> UPI / Scan & Pay
+                </div>
+                <div class="payment-method" onclick="pickPayment('card',this)">
+                    <input type="radio" name="pm"> Debit / Credit Card
+                </div>
+                <div class="payment-method" onclick="pickPayment('nb',this)">
+                    <input type="radio" name="pm"> Net Banking
+                </div>
+            </div>
+            <div class="upi-container" id="upi-box">
+                <p style="font-size:0.9rem;">Scan QR or pay to UPI ID</p>
+                <div class="upi-id">smartpark@upi</div>
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=upi://pay?pa=smartpark@upi&pn=ParkSmart" alt="UPI QR" style="border-radius:8px;">
+            </div>
+            <div style="margin-top:1.25rem;">
+                <h3 style="font-size:1rem;font-weight:600;margin-bottom:0.6rem;">Price Breakdown</h3>
+                <div class="fare-row"><span id="p-dur-lbl">Duration</span><span id="p-base">₹–</span></div>
+                <div class="fare-row"><span>Buffer time charge</span><span id="p-buf">₹10</span></div>
+                <div class="fare-row"><span>Service fee</span><span>₹15</span></div>
+                <div class="fare-row total"><span>Total</span><span id="p-total">₹–</span></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" id="pay-back">↩ Change Slot</button>
+            <button class="btn btn-primary" id="pay-confirm">Pay & Get Ticket →</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ MODAL 3 — QR TICKET ══════════ -->
+<div class="modal-overlay" id="ticket-modal">
+    <div class="modal-content" style="max-width:440px;">
+        <div class="modal-header">
+            <div style="font-size:2rem;">🎫</div>
+            <h2 class="modal-title">Your Parking Ticket</h2>
+            <p class="modal-subtitle">Screenshot this — it's your gate pass</p>
+        </div>
+        <div class="modal-body">
+            <div class="ticket-card">
+                <div class="t-head">
+                    <div>
+                        <div class="t-brand">ParkSmart</div>
+                        <div style="font-size:0.8rem;color:#64748b;" id="t-loc">PCCOE College, Akurdi</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="t-id-lbl">Booking ID</div>
+                        <div class="t-id-val" id="t-bid">–</div>
+                    </div>
+                </div>
+                <div id="qr-canvas-ticket"></div>
+                <div class="t-grid">
+                    <div class="t-field"><label>Slot</label><span id="t-slot">–</span></div>
+                    <div class="t-field"><label>Date</label><span id="t-date">–</span></div>
+                    <div class="t-field"><label>Entry</label><span id="t-start">–</span></div>
+                    <div class="t-field"><label>Exit</label><span id="t-end">–</span></div>
+                </div>
+                <hr class="t-div">
+                <div class="t-total">
+                    <div>
+                        <div style="font-size:0.9rem;color:#64748b;">Total Paid</div>
+                        <span class="t-valid">VALID</span>
+                    </div>
+                    <div class="t-amount" id="t-fare">₹0</div>
+                </div>
+            </div>
+            <p style="font-size:0.8rem;color:#64748b;text-align:center;margin-top:.75rem;">
+                 Valid: <span id="t-validity">–</span>
+            </p>
+        </div>
+        <div class="modal-footer" style="justify-content:space-between;">
+            <button class="btn btn-outline" id="ticket-to-scanner">📷 Gate Scanner</button>
+            <button class="btn btn-outline" id="ticket-to-map">🗺 View on Map</button>
+            <button class="btn btn-primary" id="ticket-close">Done</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ MODAL 4 — GATE SCANNER ══════════ -->
+<div class="modal-overlay" id="scanner-modal">
+    <div class="modal-content" style="max-width:480px;">
+        <div class="modal-header">
+            <div style="font-size:2rem;">📷</div>
+            <h2 class="modal-title">Gate QR Scanner</h2>
+            <p class="modal-subtitle">Upload your ticket screenshot to open the gate</p>
+        </div>
+        <div class="modal-body">
+            <div class="drop-zone" id="drop-zone" onclick="document.getElementById('qr-file').click()">
+                <div style="font-size:2.5rem;">📂</div>
+                <div style="font-weight:600;font-size:1rem;margin:.4rem 0;">Click or drag & drop QR image</div>
+                <div style="font-size:0.85rem;color:#64748b;">JPG · PNG supported</div>
+            </div>
+            <input type="file" id="qr-file" accept="image/*" style="display:none;">
+            <canvas id="scan-canvas" style="display:none;"></canvas>
+
+            <div id="scan-preview-wrap" style="display:none;text-align:center;margin-bottom:1rem;">
+                <img id="scan-img" style="max-width:100%;max-height:200px;border-radius:10px;border:1px solid #e2e8f0;">
+                <button class="btn btn-primary" id="do-scan" style="margin-top:.75rem;width:100%;">🔍 Scan This Image</button>
+            </div>
+
+            <div id="scan-result" style="display:none;"></div>
+
+            <!-- Map after valid scan -->
+            <div id="scan-map-wrap" style="display:none;margin-top:1rem;">
+                <div id="scan-leaflet-map"></div>
+                <p style="font-size:0.85rem;color:#64748b;margin-top:.5rem;">
+                    🗺 Navigate to <strong id="scan-slot-label">your slot</strong>
+                </p>
+                <button class="btn btn-primary" style="margin-top:.5rem;width:100%;" onclick="openOSMExternal()">
+                    Open in Google Maps ↗
+                </button>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" id="scanner-close">Close</button>
+            <button class="btn btn-outline" id="scanner-reset" style="display:none;">Try Again</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 5 — LOGIN -->
+<div class="modal-overlay" id="login-modal">
+    <div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title">Login to ParkSmart</h2></div>
+        <div class="modal-body">
+            <div class="form-field"><label>Email</label><input type="email" id="li-email" placeholder="you@email.com"></div>
+            <div class="form-field"><label>Password</label><input type="password" id="li-pass" placeholder="••••••••"></div>
+            <button class="btn btn-primary" style="width:100%;margin-top:.5rem;" onclick="doLogin()">Login</button>
+            <p style="text-align:center;font-size:0.9rem;margin-top:1rem;">
+                No account? <a href="#" id="to-signup" style="color:#3b82f6;">Sign up</a>
+            </p>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" id="li-close">Close</button></div>
+    </div>
+</div>
+
+<!-- MODAL 6 — SIGNUP -->
+<div class="modal-overlay" id="signup-modal">
+    <div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title">Create Account</h2></div>
+        <div class="modal-body">
+            <div class="form-field"><label>Full Name</label><input type="text" id="su-name" placeholder="Nupur Sharma"></div>
+            <div class="form-field"><label>Email</label><input type="email" id="su-email" placeholder="you@email.com"></div>
+            <div class="form-field"><label>Phone</label><input type="tel" id="su-phone" placeholder="+91 9876543210"></div>
+            <div class="form-field"><label>Password</label><input type="password" id="su-pass" placeholder="••••••••"></div>
+            <button class="btn btn-primary" style="width:100%;margin-top:.5rem;" onclick="doSignup()">Create Account</button>
+            <p style="text-align:center;font-size:0.9rem;margin-top:1rem;">
+                Have an account? <a href="#" id="to-login" style="color:#3b82f6;">Login</a>
+            </p>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" id="su-close">Close</button></div>
+    </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+    <div class="footer-container">
+        <div>
+            <div class="footer-logo"><div class="footer-logo-icon">P</div><span>ParkSmart</span></div>
+            <p class="footer-desc">Smart parking for Akurdi, Pune.</p>
+        </div>
+        <div class="footer-col">
+            <h4>Quick Links</h4>
+            <a href="#">Home</a><a href="#">Find Parking</a><a href="#">My Bookings</a>
+        </div>
+        <div class="footer-col">
+            <h4>Support</h4>
+            <a href="#">Help Center</a><a href="#">Contact Us</a><a href="#">Privacy Policy</a>
+        </div>
+        <div class="footer-col">
+            <h4>Project Team</h4>
+            <a href="#">Nupur – UI/Web</a><a href="#">Pranita – Hardware/AI</a>
+        </div>
+    </div>
+    
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  CONFIG — ThingSpeak keys already filled in
+// ═══════════════════════════════════════════════════════════════
+const CFG = {
+    TS_CHANNEL_ID: "3031605",
+    TS_READ_KEY:   "FQ6V0IQ58OQ8PMJW",   // ✅ Read key
+    TS_WRITE_KEY:  "BCE2BB3U69AEC44P",    // ✅ Write key (gate signal)
+
+    PARK_LAT:  18.6513,
+    PARK_LNG:  73.7597,
+
+    // Individual slot positions inside parking lot
+    SLOTS: {
+        1: { lat: 18.65140, lng: 73.75940, label: "Slot 1 – Row A, Far Left"   },
+        2: { lat: 18.65140, lng: 73.75960, label: "Slot 2 – Row A, Centre-L"   },
+        3: { lat: 18.65140, lng: 73.75980, label: "Slot 3 – Row A, Centre-R"   },
+        4: { lat: 18.65140, lng: 73.76000, label: "Slot 4 – Row A, Far Right"  },
+    },
+
+    RATE:        80,
+    SERVICE_FEE: 15,
+    BUFFER_FEE:  10,
+    REFRESH_MS:  10000
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+let bufMins        = 15;
+let selSlot        = null;
+let booking        = {};
+let fare           = {};
+let ticket         = null;
+let sensors        = {};
+let notifTimers    = [];
+
+// Leaflet map instances
+let mainMap        = null;
+let routingControl = null;
+let slotMarkers    = {};
+let scanMap        = null;
+let scanMarker     = null;
+
+const $ = id => document.getElementById(id);
+
+// ═══════════════════════════════════════════════════════════════
+//  NOTIFICATIONS  (T-10min, T-5min, T-0)
+// ═══════════════════════════════════════════════════════════════
+function scheduleExpiryNotifications(startStr, endStr, dateStr) {
+    notifTimers.forEach(clearTimeout);
+    notifTimers = [];
+
+    if ('Notification' in window && Notification.permission === 'default')
+        Notification.requestPermission();
+
+    const now = new Date();
+    const [eh, em] = endStr.split(':').map(Number);
+    const endDate  = new Date(dateStr + 'T00:00:00');
+    endDate.setHours(eh, em, 0, 0);
+
+    const fire = (icon, title, msg, red) => {
+        $('notif-icon').textContent  = icon;
+        $('notif-title').textContent = title;
+        $('notif-msg').textContent   = msg;
+        $('notif-bar').style.display = 'flex';
+        $('notif-inner').style.background = red ? '#991b1b' : '#0f172a';
+        if ('Notification' in window && Notification.permission === 'granted')
+            new Notification(title, { body: msg });
+    };
+
+    const schedule = (ms, fn) => { if (ms > 0) notifTimers.push(setTimeout(fn, ms)); };
+    schedule(endDate - now - 600000, () => fire('⚠️','Parking Expiring Soon',`Slot ${selSlot} expires in 10 minutes!`, false));
+    schedule(endDate - now - 300000, () => fire('🔔','Only 5 Minutes Left!',`Hurry! Slot ${selSlot} expires at ${endStr}.`, false));
+    schedule(endDate - now,          () => fire('🚨','Parking Time Expired!',`Booking for Slot ${selSlot} has ended. Move your vehicle.`, true));
+}
+function closeNotif() { $('notif-bar').style.display = 'none'; }
+window.closeNotif = closeNotif;
+
+// ═══════════════════════════════════════════════════════════════
+//  FARE CALCULATION
+// ═══════════════════════════════════════════════════════════════
+function calcDuration(s, e) {
+    const [sh,sm] = s.split(':').map(Number);
+    const [eh,em] = e.split(':').map(Number);
+    const mins = (eh*60+em) - (sh*60+sm);
+    return mins <= 0 ? 0 : Math.ceil(mins/30)*0.5;
+}
+function calcFare(hrs) {
+    const base = hrs * CFG.RATE;
+    const buf  = bufMins > 0 ? CFG.BUFFER_FEE : 0;
+    return { base, buf, svc: CFG.SERVICE_FEE, total: base + buf + CFG.SERVICE_FEE, hrs };
+}
+function updateFareBar() {
+    const hrs = calcDuration($('bk-start').value, $('bk-end').value);
+    if (hrs <= 0) { $('fare-bar').style.display = 'none'; return; }
+    fare = calcFare(hrs);
+    $('fb-duration').textContent = hrs + (hrs===1?' hr':' hrs');
+    $('fb-total').textContent    = '₹' + fare.total;
+    $('fare-bar').style.display  = 'block';
+}
+function fmtTime(t) {
+    if (!t) return '–';
+    const [h,m] = t.split(':');
+    const hr = parseInt(h);
+    return ((hr%12)||12) + ':' + m + ' ' + (hr>=12?'PM':'AM');
+}
+function genBookingId() { return 'PSK-' + Date.now().toString(36).toUpperCase(); }
+
+// ═══════════════════════════════════════════════════════════════
+//  THINGSPEAK — SENSOR DATA
+// ═══════════════════════════════════════════════════════════════
+async function fetchSensors() {
+    try {
+        const url = `https://api.thingspeak.com/channels/${CFG.TS_CHANNEL_ID}/feeds/last.json?api_key=${CFG.TS_READ_KEY}`;
+        
+        const res = await fetch(url);
+        const d = await res.json();
+
+        // Build proper slot structure
+        const slots = [1, 2, 3, 4].map(i => {
+            const irVal = d['field' + i] || '0';
+
+            return {
+                id: i,
+                ir: irVal,
+                occ: irVal === '1'  // occupied if IR = 1
+            };
+        });
+
+        return slots;
+
+    } catch (e) {
+        console.error("Sensor fetch error:", e);
+
+        // fallback (so UI never breaks)
+        return [1,2,3,4].map(i => ({
+            id: i,
+            ir: '0',
+
+            occ: false
+        }));
+    }
+}
+
+async function refreshUI() {
+    const slots = await fetchSensors();
+    const free  = slots.filter(s=>!s.occ).length;
+    $('slots-summary').textContent = `${free} of 4 slots available`;
+    $('last-upd').textContent      = new Date().toLocaleTimeString();
+    $('avail-summary').textContent = `${free} slots available · ₹80/hr · Updated ${new Date().toLocaleTimeString()}`;
+
+    
+
+    const cb = $('card-badge');
+    if      (free===0)  { cb.textContent='Full';      cb.className='parking-status status-full'; }
+    else if (free<=2)   { cb.textContent='Limited';   cb.className='parking-status status-warning'; }
+    else                { cb.textContent='Available'; cb.className='parking-status status-available'; }
+
+    // Update slot marker colours on main map
+    if (mainMap) updateMapMarkers(slots);
+    if ($('slot-modal').style.display==='flex') renderSlotGrid(slots);
+    return slots;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LEAFLET MAIN MAP
+// ═══════════════════════════════════════════════════════════════
+function initMainMap() {
+    if (mainMap) { mainMap.invalidateSize(); return; }
+
+    mainMap = L.map('leaflet-map').setView([CFG.PARK_LAT, CFG.PARK_LNG], 17);
+
+    // OpenStreetMap tile layer — free, no key needed
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+        maxZoom: 20
+    }).addTo(mainMap);
+
+    // Parking entrance marker
+    const parkIcon = L.divIcon({
+        html: `<div style="background:#3b82f6;color:white;padding:6px 10px;border-radius:8px;font-weight:bold;font-size:13px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3);">🅿 PCCOE Parking</div>`,
+        className: '', iconAnchor: [60, 14]
+    });
+    L.marker([CFG.PARK_LAT, CFG.PARK_LNG], { icon: parkIcon }).addTo(mainMap);
+
+    // Slot markers
+    Object.entries(CFG.SLOTS).forEach(([id, pos]) => {
+        const icon = makeSlotIcon(id, true);
+        const marker = L.marker([pos.lat, pos.lng], { icon })
+            .addTo(mainMap)
+            .bindPopup(`<b>${pos.label}</b><br>Status: <b style="color:#065f46">🟢 Free</b>`);
+        slotMarkers[id] = marker;
+    });
+
+    // Try to get user location and draw route
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => drawRoute(pos.coords.latitude, pos.coords.longitude),
+            ()  => showDirPanelFallback()
+        );
+    } else {
+        showDirPanelFallback();
+    }
+}
+
+function makeSlotIcon(id, free) {
+    const color = free ? '#22c55e' : '#ef4444';
+    return L.divIcon({
+        html: `<div style="background:${color};color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);">${id}</div>`,
+        className: '', iconSize: [32,32], iconAnchor: [16,16]
+    });
+}
+
+function updateMapMarkers(slots) {
+    slots.forEach(slot => {
+        const marker = slotMarkers[slot.id];
+        if (!marker) return;
+        const free = !slot.occ;
+        marker.setIcon(makeSlotIcon(slot.id, free));
+        marker.getPopup().setContent(
+            `<b>${CFG.SLOTS[slot.id].label}</b><br>
+             IR: ${slot.ir} <br>
+             Status: <b style="color:${free?'#065f46':'#991b1b'}">${free?'🟢 Free':'🔴 Occupied'}</b>`
+        );
+    });
+}
+
+function drawRoute(userLat, userLng) {
+    // Remove old routing control
+    if (routingControl) { mainMap.removeControl(routingControl); routingControl = null; }
+
+    // Add user marker
+    L.marker([userLat, userLng], {
+        icon: L.divIcon({
+            html: `<div style="background:#6366f1;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);">📍</div>`,
+            className: '', iconSize: [28,28], iconAnchor: [14,14]
+        })
+    }).addTo(mainMap).bindPopup('<b>Your Location</b>').openPopup();
+
+    // Leaflet Routing Machine with OSRM (completely free)
+    routingControl = L.Routing.control({
+        waypoints: [
+            L.latLng(userLat, userLng),
+            L.latLng(CFG.PARK_LAT, CFG.PARK_LNG)
+        ],
+        routeWhileDragging: false,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        show: false,              // hide default sidebar — we show our own panel
+        lineOptions: { styles: [{ color: '#3b82f6', weight: 5, opacity: 0.8 }] },
+        createMarker: () => null  // don't add extra markers
+    }).addTo(mainMap);
+
+    routingControl.on('routesfound', e => {
+        const r   = e.routes[0];
+        const leg = r.summary;
+        const km  = (leg.totalDistance / 1000).toFixed(1);
+        const min = Math.ceil(leg.totalTime / 60);
+
+        $('dir-summary').innerHTML =
+            `📍 From your location &nbsp;·&nbsp; 🚗 ${km} km &nbsp;·&nbsp; ⏱ ~${min} min drive`;
+
+        // Show first 5 turn-by-turn steps
+        const steps = r.instructions ? r.instructions.slice(0,5) : [];
+        $('dir-steps').innerHTML = steps.map((s,i) =>
+            `<div class="dir-step">
+                <div class="dir-num">${i+1}</div>
+                <div>${s.text} <span style="color:#94a3b8;font-size:.8rem;">(${(s.distance/1000).toFixed(1)} km)</span></div>
+            </div>`
+        ).join('') + (steps.length === 0 ? '<p style="color:#64748b;">Route calculated. Open Google Maps for full directions.</p>' : '');
+
+        $('dir-panel').style.display = 'block';
+    });
+
+    routingControl.on('routingerror', () => showDirPanelFallback());
+}
+
+function showDirPanelFallback() {
+    $('dir-summary').innerHTML = `📍 PCCOE College Parking, Akurdi, Pune`;
+    $('dir-steps').innerHTML   = `<p style="color:#64748b;font-size:.9rem;">Allow location access for turn-by-turn directions, or open Google Maps.</p>`;
+    $('dir-panel').style.display = 'block';
+}
+
+function openOSMExternal() {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${CFG.PARK_LAT},${CFG.PARK_LNG}&travelmode=driving`, '_blank');
+}
+window.openOSMExternal = openOSMExternal;
+
+// ═══════════════════════════════════════════════════════════════
+//  POST-SCAN MAP (shows slot inside parking after gate opens)
+// ═══════════════════════════════════════════════════════════════
+function showScanMap(slotId) {
+    const pos = CFG.SLOTS[slotId] || CFG.SLOTS[1];
+    $('scan-slot-label').textContent = pos.label;
+    $('scan-map-wrap').style.display = 'block';
+
+    // Need short delay so the div is visible before Leaflet init
+    setTimeout(() => {
+        if (!scanMap) {
+            scanMap = L.map('scan-leaflet-map').setView([pos.lat, pos.lng], 20);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap', maxZoom: 21
+            }).addTo(scanMap);
+        } else {
+            scanMap.setView([pos.lat, pos.lng], 20);
+            if (scanMarker) scanMap.removeLayer(scanMarker);
+        }
+
+        const icon = L.divIcon({
+            html: `<div style="background:#3b82f6;color:white;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,.4);">${slotId}</div>`,
+            className: '', iconSize: [38,38], iconAnchor: [19,19]
+        });
+        scanMarker = L.marker([pos.lat, pos.lng], { icon })
+            .addTo(scanMap)
+            .bindPopup(`<b>${pos.label}</b><br>🟢 Your reserved slot`)
+            .openPopup();
+
+        scanMap.invalidateSize();
+    }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SLOT GRID
+// ═══════════════════════════════════════════════════════════════
+function renderSlotGrid(slots) {
+    $('slot-container').innerHTML = '';
+    const hrs = calcDuration($('bk-start').value, $('bk-end').value);
+    if (hrs > 0) {
+        const f = calcFare(hrs);
+        $('sm-dur').textContent   = hrs + ' hr' + (hrs!==1?'s':'');
+        $('sm-total').textContent = '₹' + f.total;
+        $('slot-fare-preview').style.display = 'block';
+    }
+    slots.forEach(slot => {
+        const div = document.createElement('article');
+        div.className = `slot ${slot.occ?'occupied':'free'}`;
+        div.innerHTML = `
+            <div class="slot-title">Slot ${slot.id}</div>
+            <div class="slot-status">${slot.occ?'🔴 Occupied':'🟢 Free'}</div>
+            <div class="slot-sensors">IR:${slot.ir}</div>
+            <button class="slot-btn" ${slot.occ?'disabled':''} data-id="${slot.id}">
+                ${slot.occ?'Taken':'Book Slot '+slot.id}
+            </button>`;
+        if (!slot.occ) {
+            div.querySelector('.slot-btn').addEventListener('click', () => {
+                selSlot = slot.id;
+                closeModal('slot-modal');
+                showPayModal();
+            });
+        }
+        $('slot-container').appendChild(div);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PAYMENT MODAL
+// ═══════════════════════════════════════════════════════════════
+function showPayModal() {
+    const s = $('bk-start').value, e = $('bk-end').value, d = $('bk-date').value;
+    const hrs = calcDuration(s, e);
+    fare    = calcFare(hrs);
+    booking = { location:'PCCOE College', date:d, start:s, end:e, price:CFG.RATE };
+
+    $('p-loc').textContent     = booking.location;
+    $('p-slot').textContent    = 'Slot ' + selSlot;
+    $('p-date').textContent    = d;
+    $('p-time').textContent    = fmtTime(s) + ' → ' + fmtTime(e);
+    $('p-dur-lbl').textContent = `Duration (${hrs} hr${hrs!==1?'s':''})`;
+    $('p-base').textContent    = '₹' + fare.base;
+    $('p-buf').textContent     = '₹' + fare.buf;
+    $('p-total').textContent   = '₹' + fare.total;
+
+    pickPayment('upi', document.querySelector('.payment-method'));
+    showModal('pay-modal');
+}
+
+function pickPayment(method, el) {
+    document.querySelectorAll('.payment-method').forEach(m => m.classList.remove('active'));
+    if (el) el.classList.add('active');
+    $('upi-box').style.display = method==='upi' ? 'block' : 'none';
+}
+window.pickPayment = pickPayment;
+
+// ═══════════════════════════════════════════════════════════════
+//  CONFIRM PAYMENT → QR TICKET
+// ═══════════════════════════════════════════════════════════════
+function confirmPayment() {
+    const t = {
+        bookingId: genBookingId(), v: 1,
+        slot: selSlot, location: booking.location,
+        date: booking.date, start: booking.start, end: booking.end,
+        fare: fare.total, issuedAt: new Date().toISOString()
+    };
+    ticket = t;
+    closeModal('pay-modal');
+    scheduleExpiryNotifications(booking.start, booking.end, booking.date);
+
+    $('qr-canvas-ticket').innerHTML = '';
+    new QRCode($('qr-canvas-ticket'), {
+        text: JSON.stringify(t), width:180, height:180,
+        colorDark:'#0f172a', colorLight:'#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+    });
+    $('t-bid').textContent   = t.bookingId;
+    $('t-slot').textContent  = 'Slot ' + t.slot;
+    $('t-date').textContent  = t.date;
+    $('t-start').textContent = fmtTime(t.start);
+    $('t-end').textContent   = fmtTime(t.end);
+    $('t-fare').textContent  = '₹' + t.fare;
+    $('t-validity').textContent = fmtTime(t.start) + ' – ' + fmtTime(t.end) + ' on ' + t.date;
+    showModal('ticket-modal');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GATE OPEN — writes field5=1 → ESP32 reads → servo opens
+//  Then resets field5=0 after 3 seconds so gate doesn't stay open
+//
+//  WHY field5?  Pranita's ESP32 reads field5 for gate signal.
+//  WHY retry?   ThingSpeak free tier = 1 write per 15 seconds.
+//               If ESP32 just wrote sensor data, our write gets
+//               rejected (returns "0"). We retry up to 4 times.
+//  WHY reset?   Without field5=0, the old value stays "1" forever
+//               and the gate re-opens on the next ESP32 poll.
+// ═══════════════════════════════════════════════════════════════
+async function sendToThingSpeak(fieldVal) {
+    // fieldVal = "field5=1" or "field5=0"
+    try {
+        const url = `https://api.thingspeak.com/update?api_key=${CFG.TS_WRITE_KEY}&${fieldVal}`;
+        const r   = await fetch(url);
+        const txt = await r.text();
+        return parseInt(txt) > 0; // ThingSpeak returns entry# on success, 0 on rate-limit
+    } catch(e) {
+        console.warn('ThingSpeak fetch error:', e);
+        return false;
+    }
+}
+
+async function triggerGateOpen() {
+    const MAX_RETRIES   = 4;
+    const RETRY_DELAY = 2000;
+    let gateOk = false;
+
+    // ── STEP 1: Send field5=1 with retries ──────────────────────
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        console.log(`🔓 Gate OPEN attempt ${attempt}/${MAX_RETRIES} — sending field5=1`);
+        gateOk = await sendToThingSpeak('field5=1');
+
+        if (gateOk) {
+            console.log(`Gate signal sent! (attempt ${attempt})`);
+            break;
+        }
+
+        console.warn(`⚠ ThingSpeak rate-limited. Waiting 16s before retry…`);
+        if (attempt < MAX_RETRIES) {
+            await new Promise(r => setTimeout(r, RETRY_DELAY));
+        }
+    }
+
+    if (!gateOk) {
+        console.error('Gate signal failed after all retries. Check write key and rate limit.');
+        return false;
+    }
+
+    // ── STEP 2: Reset field5=0 after 3 seconds ──────────────────
+    // This is CRITICAL — without reset, old value "1" stays in
+    // ThingSpeak and the servo opens again on next ESP32 poll.
+   // RESET field5 after 16 sec
+setTimeout(async () => {
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+
+        console.log(`Reset attempt ${attempt}`);
+
+        const resetOk = await sendToThingSpeak('field5=0');
+
+        if (resetOk) {
+            console.log('Gate RESET success');
+            break;
+        }
+
+        await new Promise(r => setTimeout(r, 20000));
+    }
+
+}, 16000);
+
+    return true;
+}
+
+// Send field5=0 for INVALID/EXPIRED QR — ensures gate stays closed
+async function sendGateClose() {
+    await sendToThingSpeak('field5=0');
+    console.log('🔒 Invalid QR — gate close signal sent (field5=0)');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  QR SCANNER
+// ═══════════════════════════════════════════════════════════════
+function setupScanner() {
+    const dz = $('drop-zone'), inp = $('qr-file');
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+    inp.addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+    $('do-scan').addEventListener('click', doScan);
+    $('scanner-reset').addEventListener('click', resetScanner);
+}
+
+function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+        $('scan-img').src = e.target.result;
+        $('scan-preview-wrap').style.display = 'block';
+        $('scan-result').style.display       = 'none';
+        $('scan-map-wrap').style.display     = 'none';
+        $('scanner-reset').style.display     = 'none';
+    };
+    reader.readAsDataURL(file);
+}
+
+function doScan() {
+    const img = $('scan-img'), canvas = $('scan-canvas'), ctx = canvas.getContext('2d');
+    canvas.width  = img.naturalWidth  || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const code = jsQR(ctx.getImageData(0,0,canvas.width,canvas.height).data, canvas.width, canvas.height);
+    if (!code) { showScanResult('error','❌ No QR Found','QR code not detected. Try a clearer image.'); return; }
+    validateTicket(code.data);
+}
+
+async function validateTicket(raw) {
+    // ── Parse QR data ───────────────────────────────────────────
+    let t;
+    try { t = JSON.parse(raw); } catch(e) {
+        sendGateClose(); // safety — make sure gate stays shut
+        showScanResult('error','❌ Invalid QR','Not a ParkSmart ticket. Gate remains closed.');
+        return;
+    }
+    if (!t.bookingId || !t.slot || !t.start || !t.end || !t.date) {
+        sendGateClose();
+        showScanResult('error','❌ Expired Ticket Please Contact Admin!','QR is missing required fields. Gate remains closed.');
+        return;
+    }
+
+    // ── Check date ──────────────────────────────────────────────
+    const now   = new Date();
+    const today = now.toISOString().split('T')[0];
+
+    if (t.date !== today) {
+        sendGateClose(); // ← always send 0 on rejection
+        if (t.date < today)
+            showScanResult('expired','⏰ Ticket Expired',`Valid date was ${t.date}. Today is ${today}. Please Contact Admin!`);
+        else
+            showScanResult('warn','📅 Not Yet Valid',`This ticket is for ${t.date}. Come back on that day. Gate remains closed.`);
+        return;
+    }
+
+    // ── Check time window ────────────────────────────────────────
+    const tStart = new Date(); const [sh,sm]=t.start.split(':').map(Number); tStart.setHours(sh,sm,0,0);
+    const tEnd   = new Date(); const [eh,em]=t.end.split(':').map(Number);   tEnd.setHours(eh,em,0,0);
+
+    if (now < tStart) {
+        sendGateClose();
+        showScanResult('warn','🕐 Too Early',`Booking starts at ${fmtTime(t.start)}. Come back in ${Math.round((tStart-now)/60000)} min. Gate remains closed.`);
+        return;
+    }
+    if (now > tEnd) {
+        sendGateClose();
+        showScanResult('expired','⏰ Booking Expired',`Your booking was until ${fmtTime(t.end)}. Time has passed. Gate remains closed.`);
+        return;
+    }
+
+    // ── ✅ VALID — send field5=1 to ThingSpeak ───────────────────
+    // Show "sending" message immediately so user knows it's working
+    showScanResult('success','⏳ Ticket Valid — Sending Gate Signal…',`
+        <div style="font-size:.9rem;line-height:1.8;color:#334155;">
+            <b>Booking ID:</b> ${t.bookingId}<br>
+            <b>Slot:</b> ${t.slot} &nbsp;·&nbsp; <b>Valid until:</b> ${fmtTime(t.end)}<br>
+            <b>Status:</b> Sending <code>field5=1</code> to ThingSpeak…<br>
+            <small style="color:#64748b;">May take up to 16 sec if sensor just updated</small>
+        </div>`);
+
+    // This sends field5=1 with retry, then auto-resets field5=0 after 3s
+    const gateOk = await triggerGateOpen();
+
+    // Update result once we know if it succeeded
+    showScanResult('success', gateOk ? '✅ Access Granted!' : '⚠ Check Connection',`
+        <div class="gate-anim">${gateOk ? '🚧 → 🟢' : '🚧 → 🟡'}</div>
+        <div style="margin-top:.75rem;font-size:.9rem;line-height:1.8;">
+            <b>ID:</b> ${t.bookingId}<br>
+            <b>Slot:</b> ${t.slot} &nbsp;·&nbsp; <b>Until:</b> ${fmtTime(t.end)}<br>
+            <b>ThingSpeak field5:</b> ${gateOk
+                ? '🟢 Set to 1 — gate opening now. Resets to 0 in 3 sec.'
+                : '🔴 Write failed after 4 retries. Check ESP32 WiFi and write key.'}
+        </div>`);
+
+    showScanMap(t.slot);
+    $('scanner-reset').style.display = 'inline-block';
+}
+
+function showScanResult(type, title, html) {
+    const d = $('scan-result');
+    d.className = { success:'scan-success', error:'scan-error', expired:'scan-error', warn:'scan-warn' }[type] || 'scan-error';
+    d.innerHTML = `<h3 style="margin-bottom:.5rem;font-size:1rem;">${title}</h3>${html}`;
+    d.style.display = 'block';
+}
+
+function resetScanner() {
+    ['scan-preview-wrap','scan-result','scan-map-wrap'].forEach(id => $(id).style.display='none');
+    $('scanner-reset').style.display = 'none';
+    $('qr-file').value = '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VIEW SWITCH
+// ═══════════════════════════════════════════════════════════════
+function switchView(v) {
+    if (v === 'map') {
+        $('list-view').style.display = 'none';
+        $('map-view').style.display  = 'block';
+        $('map-btn').classList.add('active');
+        $('list-btn').classList.remove('active');
+        setTimeout(initMainMap, 100);
+    } else {
+        $('list-view').style.display = 'block';
+        $('map-view').style.display  = 'none';
+        $('list-btn').classList.add('active');
+        $('map-btn').classList.remove('active');
+    }
+}
+window.switchView = switchView;
+
+function clearFilters() {
+    $('sort-select').selectedIndex = 0;
+    $('price-range').value = 200;
+    $('price-lbl').textContent = '200';
+    document.querySelectorAll('.filter-options input[type=radio]').forEach((r,i) => r.checked = i===1);
+    document.querySelectorAll('.filter-options input[type=checkbox]').forEach((c,i) => c.checked = i<2);
+}
+window.clearFilters = clearFilters;
+
+// ═══════════════════════════════════════════════════════════════
+//  MODAL HELPERS
+// ═══════════════════════════════════════════════════════════════
+function showModal(id) { $(id).style.display = 'flex'; }
+function closeModal(id){ $(id).style.display = 'none'; }
+
+// ═══════════════════════════════════════════════════════════════
+//  DOM READY
+// ═══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+    // Fare bar
+    $('bk-start').addEventListener('input', updateFareBar);
+    $('bk-end').addEventListener('input', updateFareBar);
+    updateFareBar();
+
+    // Buffer
+    $('buf-minus').addEventListener('click', () => { if(bufMins>5){ bufMins-=5; $('buf-lbl').textContent=`±${bufMins}min`; updateFareBar(); } });
+    $('buf-plus').addEventListener('click',  () => { if(bufMins<60){ bufMins+=5; $('buf-lbl').textContent=`±${bufMins}min`; updateFareBar(); } });
+
+    // Price range
+    $('price-range').addEventListener('input', function(){ $('price-lbl').textContent=this.value; });
+
+    // View toggle
+    $('list-btn').addEventListener('click', () => switchView('list'));
+    $('map-btn').addEventListener('click',  () => switchView('map'));
+
+    // Get Directions → switch to map and draw route
+    $('get-directions-btn').addEventListener('click', () => switchView('map'));
+
+    // Search button
+    $('search-btn').addEventListener('click', refreshUI);
+
+    // Book Now
+    $('book-btn').addEventListener('click', async () => {
+        booking = { location:'PCCOE College', price:CFG.RATE };
+        showModal('slot-modal');
+        $('slot-container').innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#64748b;">Loading live data…</p>';
+        renderSlotGrid(await fetchSensors());
+    });
+
+    $('slot-cancel').addEventListener('click', () => closeModal('slot-modal'));
+    $('pay-back').addEventListener('click', () => { closeModal('pay-modal'); showModal('slot-modal'); });
+    $('pay-confirm').addEventListener('click', confirmPayment);
+
+    $('ticket-close').addEventListener('click',      () => closeModal('ticket-modal'));
+    $('ticket-to-scanner').addEventListener('click', () => { closeModal('ticket-modal'); resetScanner(); showModal('scanner-modal'); });
+    $('ticket-to-map').addEventListener('click',     () => { closeModal('ticket-modal'); switchView('map'); });
+
+    $('open-scanner-btn').addEventListener('click', () => { resetScanner(); showModal('scanner-modal'); });
+    $('scanner-close').addEventListener('click', () => closeModal('scanner-modal'));
+    setupScanner();
+
+    // Auth
+    $('login-btn').addEventListener('click',  () => showModal('login-modal'));
+    $('signup-btn').addEventListener('click', () => showModal('signup-modal'));
+    $('li-close').addEventListener('click',   () => closeModal('login-modal'));
+    $('su-close').addEventListener('click',   () => closeModal('signup-modal'));
+    $('to-signup').addEventListener('click', e => { e.preventDefault(); closeModal('login-modal'); showModal('signup-modal'); });
+    $('to-login').addEventListener('click',  e => { e.preventDefault(); closeModal('signup-modal'); showModal('login-modal'); });
+
+    // Close on backdrop click
+    document.querySelectorAll('.modal-overlay').forEach(o => {
+        o.addEventListener('click', e => { if(e.target===o) o.style.display='none'; });
+    });
+
+    // Start sensor polling
+    refreshUI();
+    setInterval(refreshUI, CFG.REFRESH_MS);
+});
+
+function doLogin()  { const e=$('li-email').value; if(e){ alert(`✅ Logged in as ${e}`); closeModal('login-modal'); } else alert('Please enter your email.'); }
+function doSignup() { const n=$('su-name').value;  if(n){ alert(`✅ Account created for ${n}!`); closeModal('signup-modal'); } else alert('Please fill in your name.'); }
+</script>
+</body>
+</html>
